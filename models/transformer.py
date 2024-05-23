@@ -39,6 +39,9 @@ class Transformer(nn.Module):
         self.d_model = d_model
         self.nhead = nhead
 
+        self.num_encoder_layers = num_encoder_layers
+        self.num_decoder_layers = num_decoder_layers
+
     def _reset_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:
@@ -179,6 +182,7 @@ class TransformerEncoderLayer(nn.Module):
                 src_mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None,
                 pos: Optional[Tensor] = None):
+        # print('self.normalize_before:', self.normalize_before)
         if self.normalize_before:
             return self.forward_pre(src, src_mask, src_key_padding_mask, pos)
         return self.forward_post(src, src_mask, src_key_padding_mask, pos)

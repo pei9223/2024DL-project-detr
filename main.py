@@ -15,7 +15,7 @@ import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
 from engine import evaluate, train_one_epoch
 from models import build_model
-
+from tome import apply_patch
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
@@ -182,6 +182,9 @@ def main(args):
             args.start_epoch = checkpoint['epoch'] + 1
 
     if args.eval:
+        # apply ToMe patch 
+        # apply_patch(model, trace_source=False, prop_attn=True)
+        # model.r = 8     # set r
         test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
                                               data_loader_val, base_ds, device, args.output_dir)
         if args.output_dir:
