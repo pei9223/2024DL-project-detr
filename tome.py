@@ -68,7 +68,7 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransfor
                               key_padding_mask=src_key_padding_mask)[0]
         src = src + self.dropout1(src2)
 
-        r = self._tome_info["r"].pop(0)
+        r = self._tome_info["e_r"].pop(0)
         # num = spatial_shapes[0][0] * spatial_shapes[0][1]
         # np.savetxt('mask.txt', np.array(src_key_padding_mask[0].cpu()))
         # print('ori mask:', src_key_padding_mask.shape)
@@ -93,16 +93,16 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransfor
             
             # print('before x: ', x.shape, 'pos: ', pos.shape, 'reference_points:', reference_points.shape)
             # print('merge merge ref:', merge, merge_ref)
-            cur_size = self._tome_info["size"]
+            cur_size = self._tome_info["e_size"]
 
             # src = src.transpose(0, 1)
-            src, self._tome_info["size"] = merge_wavg(merge, src, cur_size) # 將token進行merge
+            src, self._tome_info["e_size"] = merge_wavg(merge, src, cur_size) # 將token進行merge
             
             # src = src.transpose(0, 1)
             # print('merge src:', src.shape)
             # print('ori pos:', pos.shape)
             # pos = pos.transpose(0, 1)
-            pos, _ = merge_wavg(merge_ref, pos, cur_size, self._tome_info["size"], 'pos') # merge pos
+            pos, _ = merge_wavg(merge_ref, pos, cur_size, self._tome_info["e_size"], 'pos') # merge pos
             # pos = pos.transpose(0, 1)
             # print('merge pos:', pos.shape)
             # N, n_q, lvl, coor = reference_points.shape
@@ -156,53 +156,39 @@ class ToMeTransformerDecoderLayer(TransformerDecoderLayer): # DeformableTransfor
                                    key_padding_mask=memory_key_padding_mask)[0]
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
-        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
-        tgt = tgt + self.dropout3(tgt2)
-        tgt = self.norm3(tgt)
-        return tgt
 
-    def forward(self, i, tgt, query_pos, reference_points, src, src_spatial_shapes, level_start_index, src_padding_mask=None):
-        # print("===== decoder ", i, "========")
-        # Note: this is copied from timm.models.vision_transformer.Block with modifications.
-        attn_size = self._tome_info["size"] if self._tome_info["prop_attn"] else None
-
-        # self attention
-        q = k = self.with_pos_embed(tgt, query_pos)
-        tgt2 = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1))[0].transpose(0, 1)
-        tgt = tgt + self.dropout2(tgt2)
-        tgt = self.norm2(tgt)
-        # q = k = self.with_pos_embed(tgt, query_pos)
-        # x_attn, metric = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1), attn_size)[0].transpose(0, 1)
-        # tgt = tgt + self.dropout2(x_attn)
-        # x = self.norm2(tgt)
-
-        # cross attention
-        x_attn = self.cross_attn(self.with_pos_embed(tgt, query_pos),
-                               reference_points,
-                               src, src_spatial_shapes, level_start_index, src_padding_mask, attn_size)
-        x_attn = tgt + self.dropout1(x_attn)
-        x = self.norm1(x_attn)
-
-        r = self._tome_info["r"].pop(0)
+        r = self._tome_info["d_r"].pop(0)
+        # num = spatial_shapes[0][0] * spatial_shapes[0][1]
+        # np.savetxt('mask.txt', np.array(src_key_padding_mask[0].cpu()))
+        # print('ori mask:', src_key_padding_mask.shape)
+        # print('mask:', src_key_padding_mask[..., None].shape)
+        # print('mask count 0: ', torch.unique(src_key_padding_mask[0], return_counts=True))
+        
         if r > 0:
-            # Apply ToMe here 使用key找到要merge哪些token
-            merge, _ = bipartite_soft_matching(
-                x_attn,
+            merge, merge_ref = bipartite_soft_matching_dim0(
+                tgt2,
                 r,
                 self._tome_info["class_token"],
                 self._tome_info["distill_token"],
             )
+            
             if self._tome_info["trace_source"]:
                 self._tome_info["source"] = merge_source(
-                    merge, x, self._tome_info["source"]
+                    merge, tgt, self._tome_info["source"]
                 )
-            cur_size = self._tome_info["size"]
-            x, self._tome_info["size"] = merge_wavg(merge, x, cur_size) # 將token進行merge
-            query_pos, self._tome_info["size"] = merge_wavg(merge, query_pos, cur_size) # merge pos
 
-        x = self.forward_ffn(x)
+            # print('tgt:', tgt.shape)
+            # print('query_pos:', query_pos.shape)
+            cur_size = self._tome_info["d_size"]
+            tgt, self._tome_info["d_size"] = merge_wavg(merge, tgt, cur_size) # 將token進行merge
+            query_pos, _ = merge_wavg(merge_ref, query_pos, cur_size, self._tome_info["d_size"], 'pos') # merge pos
+            # print('merge tgt:', tgt.shape)
+            # print('merge query_pos:', query_pos.shape)
 
-        return x, query_pos
+        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout3(tgt2)
+        tgt = self.norm3(tgt)
+        return tgt, query_pos
 
 
 # class ToMeMSDeformAttn(MSDeformAttn):
@@ -295,11 +281,13 @@ def make_tome_class(transformer_class):
         """
 
         def forward(self, *args, **kwdargs) -> torch.Tensor:
-            num_layers = self.transformer.num_encoder_layers + self.transformer.num_decoder_layers
-            self._tome_info["r"] = parse_r(num_layers, self.r) # ex: 3個blocks, 則_tome_info["r"] = [r, r, r]
+            # num_layers = self.transformer.num_encoder_layers + self.transformer.num_decoder_layers
+            self._tome_info["e_r"] = parse_r(self.transformer.num_encoder_layers, self.er) # ex: 3個blocks, 則_tome_info["r"] = [r, r, r]
+            self._tome_info["d_r"] = parse_r(self.transformer.num_decoder_layers, self.dr)
             # 在class DeformableTransformer(nn.Module):加上self.blocks = num_encoder_layers + num_decoder_layers
 
-            self._tome_info["size"] = None
+            self._tome_info["e_size"] = None
+            self._tome_info["d_size"] = None
             self._tome_info["source"] = None
 
             return super().forward(*args, **kwdargs)
@@ -322,10 +310,13 @@ def apply_patch(
     ToMeTransformer = make_tome_class(model.__class__)
 
     model.__class__ = ToMeTransformer
-    model.r = 0
+    model.er = 0
+    model.dr = 0
     model._tome_info = {
-        "r": model.r,
-        "size": None,
+        "e_r": model.er,
+        "d_r": model.dr,
+        "e_size": None,
+        "d_size": None,
         "source": None,
         "trace_source": trace_source,
         "prop_attn": prop_attn,
@@ -349,9 +340,9 @@ def apply_patch(
             #         submodule.__class__ = ToMeMSDeformAttn
                     # setattr(module, submodule_name, ToMeMSDeformAttn())
 
-        # elif isinstance(module, DeformableTransformerDecoderLayer):
-        #     module.__class__ = ToMeDeformableTransformerDecoderLayer
-        #     module._tome_info = model._tome_info
+        elif isinstance(module, TransformerDecoderLayer):
+            module.__class__ = ToMeTransformerDecoderLayer
+            module._tome_info = model._tome_info
         # elif isinstance(module, MSDeformAttn):
         #     module.__class__ = ToMeMSDeformAttn
     
