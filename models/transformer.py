@@ -50,7 +50,6 @@ class Transformer(nn.Module):
     def forward(self, src, mask, query_embed, pos_embed):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
-        # print('transformer h, w:', h, w)
         
         src = src.flatten(2).permute(2, 0, 1)
         pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
@@ -61,7 +60,7 @@ class Transformer(nn.Module):
         memory, pos, src_key_padding_mask = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed) ##
         hs = self.decoder(tgt, memory, memory_key_padding_mask=src_key_padding_mask,
                           pos=pos, query_pos=query_embed) ##
-        # return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
+       
         return hs.transpose(1, 2), memory.permute(1, 2, 0)
 
 
@@ -185,7 +184,7 @@ class TransformerEncoderLayer(nn.Module):
                 src_mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None,
                 pos: Optional[Tensor] = None):
-        # print('self.normalize_before:', self.normalize_before)
+       
         if self.normalize_before:
             return self.forward_pre(src, src_mask, src_key_padding_mask, pos)
         return self.forward_post(src, src_mask, src_key_padding_mask, pos)

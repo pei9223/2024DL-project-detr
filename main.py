@@ -184,9 +184,9 @@ def main(args):
     if args.eval:
         # apply ToMe patch 
         apply_patch(model, trace_source=False, prop_attn=True)
-        model.er = 100     # set r
-        model.dr = 0
-        model.mr = 100
+        model.er = 100     # set r to merge encoder token
+        model.dr = 0       # set r to merge object query. If not zero, set transformer.py (293): return_intermediate_dec=False
+        model.mr = 0     # set r to merge encoder token(memory) in decoder
         test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
                                               data_loader_val, base_ds, device, args.output_dir)
         if args.output_dir:

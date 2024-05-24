@@ -50,28 +50,19 @@ def bipartite_soft_matching(
     with torch.no_grad():
         metric = metric / metric.norm(dim=-1, keepdim=True)
         a, b = metric[..., ::2, :], metric[..., 1::2, :]
-        scores = a @ b.transpose(-1, -2)        # note: 直接用token算相似度 沒有用key?
+        scores = a @ b.transpose(-1, -2)        
 
         if class_token:
             scores[..., 0, :] = -math.inf
         if distill_token:
             scores[..., :, 0] = -math.inf
 
-        # print('score:', scores.shape)
-        # print('mask:', input_padding_mask.shape)
-        # scores[input_padding_mask] = -math.inf
-
         node_max, node_idx = scores.max(dim=-1)
         edge_idx = node_max.argsort(dim=-1, descending=True)[..., None]
-
-        # print('node_idx: ', node_idx.shape)
-        # print('edge_idx: ', edge_idx.shape)
 
         unm_idx = edge_idx[..., r:, :]  # Unmerged Tokens
         src_idx = edge_idx[..., :r, :]  # Merged Tokens
         dst_idx = node_idx[..., None].gather(dim=-2, index=src_idx)
-
-        # print('dst_idx: ', dst_idx.shape)
 
         if class_token:
             # Sort to ensure the class token is at the start
@@ -102,16 +93,7 @@ def bipartite_soft_matching(
             return torch.cat([unm, dst], dim=0)
         
     def merge_ordered(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        # src, dst = x[..., ::2, :], x[..., 1::2, :]
-        # n, t1, c = src.shape
-        # unm = src.gather(dim=-2, index=unm_idx.expand(n, t1 - r, c))
-        # src = src.gather(dim=-2, index=src_idx.expand(n, r, c))
-        # dst = dst.scatter_reduce(-2, dst_idx.expand(n, r, c), src, reduce=mode)
-        # print('unm_idx: ', unm_idx)
-        # print('src_idx: ', src_idx)
-        # print('dst_idx', dst_idx)
-        # print(dst_idx)
-        # print(src_idx)
+    
         x[..., dst_idx, :] += x[..., src_idx, :]
     
         # Remove the src indices and keep the order of remaining tokens
@@ -131,18 +113,12 @@ def bipartite_soft_matching(
         return x
         
     def merge_ref(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        # N, n_q, lvl, coor = x.shape
-        # x = x.reshape((N, n_q, -1))
        
         src, dst = x[..., ::2, :], x[..., 1::2, :] # 分成set A跟set B
         n, t1, c = src.shape # n: batch size, t1: set A中的token數量, c: channel數
-        # print(n, t1, c)
+       
         unm = src.gather(dim=-2, index=unm_idx.expand(n, t1 - r, c))
         src = src.gather(dim=-2, index=src_idx.expand(n, r, c))
-        # dst = dst.scatter_reduce(-2, dst_idx.expand(n, r, c), src, reduce=mode) # (不是weighted avg??)
-        
-        # dst = dst.reshape((n, -1, c // 2, 2))
-        # unm = unm.reshape((n, -1, c // 2, 2))
     
         if distill_token:
             return torch.cat([unm[:, :1], dst[:, :1], unm[:, 1:], dst[:, 1:]], dim=1)
@@ -206,15 +182,6 @@ def bipartite_soft_matching_dim0(
         a, b = metric[::2, :], metric[1::2, :]
         scores = a @ b.transpose(-1, -2)        
 
-        # if class_token:
-        #     scores[..., 0, :] = -math.inf
-        # if distill_token:
-        #     scores[..., :, 0] = -math.inf
-
-        # print('score:', scores.shape)
-        # print('mask:', input_padding_mask.shape)
-        # scores[input_padding_mask] = -math.inf
-
         node_max, node_idx = scores.max(dim=-1)     #[N]
         edge_idx = node_max.argsort(dim=-1, descending=True)[..., None]     #[N, 1]
 
@@ -225,8 +192,6 @@ def bipartite_soft_matching_dim0(
         unm_idx = unm_idx[..., None]
         src_idx = src_idx[..., None]
         dst_idx = dst_idx[..., None]
-        # print('src_idx: ', src_idx.shape)
-        # print('dst_idx: ', dst_idx.shape)
 
         if class_token:
             # Sort to ensure the class token is at the start
@@ -246,12 +211,11 @@ def bipartite_soft_matching_dim0(
             return torch.cat([unm, dst], dim=0)
         
         
-    def merge_ref(x: torch.Tensor, mode="mean") -> torch.Tensor:
+    def merge_ref(x: torch.Tensor, mode="mean") -> torch.Tensor: # just keep dst instead of merge src and dst
         src, dst = x[::2, :, :], x[1::2, :, :]
         t1, n, c = src.shape
         unm = src.gather(dim=0, index=unm_idx.expand(t1 - r, n, c))
         src = src.gather(dim=0, index=src_idx.expand(r, n, c))
-        # dst = dst.scatter_reduce(0, dst_idx.expand(r, n, c), src, reduce=mode)
 
         if distill_token:
             return torch.cat([unm[:1, :], dst[:1, :], unm[1:, :], dst[1:, :]], dim=0)
@@ -393,20 +357,16 @@ def merge_wavg(
     Applies the merge function by taking a weighted average based on token size.
     Returns the merged tensor and the new token sizes.
     """
-    # print('merge_wavg size: ', size.shape)
     if size is None:
         size = torch.ones_like(x[..., 0, None])
 
-
     if merge_type == 'x':
         x = merge(x * size, mode="sum")
-        size = merge(size, mode="sum")      # 120 -> 112
+        size = merge(size, mode="sum")      
 
-        x = x / size        #(112, 112)
+        x = x / size        
     else: 
         x = merge(x, mode="sum")
-        # print('x: ', x.shape, 'merged_size: ', merged_size.shape)
-        # x = x / merged_size
 
     return x, size
 
