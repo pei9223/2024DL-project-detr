@@ -56,10 +56,11 @@ class Transformer(nn.Module):
         mask = mask.flatten(1)
 
         tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
-        hs = self.decoder(tgt, memory, memory_key_padding_mask=mask,
-                          pos=pos_embed, query_pos=query_embed)
-        return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
+        memory, pos, src_key_padding_mask = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed) ##
+        hs = self.decoder(tgt, memory, memory_key_padding_mask=src_key_padding_mask,
+                          pos=pos, query_pos=query_embed) ##
+        # return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
+        return hs.transpose(1, 2), memory.permute(1, 2, 0)
 
 
 class TransformerEncoder(nn.Module):
@@ -225,6 +226,7 @@ class TransformerDecoderLayer(nn.Module):
                               key_padding_mask=tgt_key_padding_mask)[0]
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
+        # memory_mask: None
         tgt2 = self.multihead_attn(query=self.with_pos_embed(tgt, query_pos),
                                    key=self.with_pos_embed(memory, pos),
                                    value=memory, attn_mask=memory_mask,

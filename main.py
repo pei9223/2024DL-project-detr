@@ -183,8 +183,8 @@ def main(args):
 
     if args.eval:
         # apply ToMe patch 
-        # apply_patch(model, trace_source=False, prop_attn=True)
-        # model.r = 8     # set r
+        apply_patch(model, trace_source=False, prop_attn=True)
+        model.r = 8     # set r
         test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
                                               data_loader_val, base_ds, device, args.output_dir)
         if args.output_dir:

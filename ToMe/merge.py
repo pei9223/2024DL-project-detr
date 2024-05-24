@@ -97,7 +97,8 @@ def bipartite_soft_matching(
         # print('unm_idx: ', unm_idx)
         # print('src_idx: ', src_idx)
         # print('dst_idx', dst_idx)
-
+        # print(dst_idx)
+        # print(src_idx)
         x[..., dst_idx, :] += x[..., src_idx, :]
     
         # Remove the src indices and keep the order of remaining tokens
@@ -150,7 +151,7 @@ def bipartite_soft_matching(
 
         return out
 
-    return merge_ordered, merge_ordered_ref, unmerge
+    return merge_ordered, merge_ordered_ref
 
 
 def kth_bipartite_soft_matching(

@@ -30,13 +30,17 @@ class ToMeTransformerEncoder(TransformerEncoder):
         output = src
 
         for layer in self.layers:
-            output, pos = layer(output, src_mask=mask,
-                           src_key_padding_mask=src_key_padding_mask, pos=pos)
+            output, pos, src_key_padding_mask = layer(output, src_mask=mask,
+                           src_key_padding_mask=src_key_padding_mask, pos=pos) ##
+        
+        r = src_key_padding_mask.shape[1] - output.shape[0] ##
+        # print('r: ', r)
+        src_key_padding_mask = src_key_padding_mask[:, r:] ## 因為src_key_padding_mask會比output少減一次r
 
         if self.norm is not None:
             output = self.norm(output)
 
-        return output
+        return output, pos, src_key_padding_mask ##
 
 
 class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransformerEncoderLayer
@@ -51,36 +55,56 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransfor
                      src_key_padding_mask: Optional[Tensor] = None,
                      pos: Optional[Tensor] = None):
         q = k = self.with_pos_embed(src, pos)
+
+        # reshape mask
+        # print('------------')
+        # print('src_key_padding_mask: ', src_key_padding_mask.shape)
+        # print('q: ', q.shape)
+        r = src_key_padding_mask.shape[1] - q.shape[0]
+        # print('r: ', r)
+        src_key_padding_mask = src_key_padding_mask[:, r:]
+        # print('merge src_key_padding_mask: ', src_key_padding_mask.shape)
         src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
                               key_padding_mask=src_key_padding_mask)[0]
         src = src + self.dropout1(src2)
 
         r = self._tome_info["r"].pop(0)
         # num = spatial_shapes[0][0] * spatial_shapes[0][1]
+        # np.savetxt('mask.txt', np.array(src_key_padding_mask[0].cpu()))
+        # print('ori mask:', src_key_padding_mask.shape)
+        # print('mask:', src_key_padding_mask[..., None].shape)
+        # print('mask count 0: ', torch.unique(src_key_padding_mask[0], return_counts=True))
         
         if r > 0:
             # Apply ToMe here 使用key找到要merge哪些token
-            print('ori src:', src2.shape)
+            # print('ori src:', src.shape)
+            src2 = src2.transpose(0, 1)
             merge, merge_ref = bipartite_soft_matching(
                 src2,
                 r,
                 self._tome_info["class_token"],
                 self._tome_info["distill_token"],
             )
+            src2 = src2.transpose(0, 1)
             if self._tome_info["trace_source"]:
                 self._tome_info["source"] = merge_source(
                     merge, src, self._tome_info["source"]
                 )
             
             # print('before x: ', x.shape, 'pos: ', pos.shape, 'reference_points:', reference_points.shape)
-            
+            # print('merge merge ref:', merge, merge_ref)
             cur_size = self._tome_info["size"]
-         
+
+            src = src.transpose(0, 1)
             src, self._tome_info["size"] = merge_wavg(merge, src, cur_size) # 將token進行merge
-            print('merge src:', src.shape)
-        
-            pos, _ = merge_wavg(merge_ref, pos, cur_size, self._tome_info["size"], 'pos') # merge pos
             
+            src = src.transpose(0, 1)
+            # print('merge src:', src.shape)
+            # print('ori pos:', pos.shape)
+            pos = pos.transpose(0, 1)
+            pos, _ = merge_wavg(merge_ref, pos, cur_size, self._tome_info["size"], 'pos') # merge pos
+            pos = pos.transpose(0, 1)
+            # print('merge pos:', pos.shape)
             # N, n_q, lvl, coor = reference_points.shape
             # reference_points = reference_points.reshape((N, n_q, -1))
             
@@ -93,7 +117,7 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransfor
         src = self.norm2(src)
         # print('forward post')
 
-        return src, pos
+        return src, pos, src_key_padding_mask ##
     
     def forward(self, src,
                 src_mask: Optional[Tensor] = None,
@@ -102,9 +126,9 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransfor
         # print('new forward')
         if self.normalize_before:
             return self.forward_pre(src, src_mask, src_key_padding_mask, pos)
-        src, pos = self.forward_post(src, src_mask, src_key_padding_mask, pos)
+        src, pos, src_key_padding_mask = self.forward_post(src, src_mask, src_key_padding_mask, pos) ##
         
-        return src, pos
+        return src, pos, src_key_padding_mask ##
 
 
 class ToMeTransformerDecoderLayer(TransformerDecoderLayer): # DeformableTransformerDecoderLayer
