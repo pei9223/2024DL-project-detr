@@ -110,7 +110,7 @@ class TransformerDecoder(nn.Module):
         intermediate = []
 
         for layer in self.layers:
-            output, query_pos = layer(output, memory, tgt_mask=tgt_mask,
+            output, query_pos, memory, pos = layer(output, memory, tgt_mask=tgt_mask,
                            memory_mask=memory_mask,
                            tgt_key_padding_mask=tgt_key_padding_mask,
                            memory_key_padding_mask=memory_key_padding_mask,
@@ -290,7 +290,7 @@ def build_transformer(args):
         num_encoder_layers=args.enc_layers,
         num_decoder_layers=args.dec_layers,
         normalize_before=args.pre_norm,
-        return_intermediate_dec=False,
+        return_intermediate_dec=True,
     )
 
 

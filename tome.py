@@ -150,6 +150,10 @@ class ToMeTransformerDecoderLayer(TransformerDecoderLayer): # DeformableTransfor
                               key_padding_mask=tgt_key_padding_mask)[0]
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
+        r = memory_key_padding_mask.shape[1] - memory.shape[0]
+        # print('k:', k.shape)
+        # print('memory_key_padding_mask.shape: ', memory_key_padding_mask.shape)
+        memory_key_padding_mask = memory_key_padding_mask[:, r:]
         tgt2 = self.multihead_attn(query=self.with_pos_embed(tgt, query_pos),
                                    key=self.with_pos_embed(memory, pos),
                                    value=memory, attn_mask=memory_mask,
@@ -157,17 +161,12 @@ class ToMeTransformerDecoderLayer(TransformerDecoderLayer): # DeformableTransfor
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
 
-        r = self._tome_info["d_r"].pop(0)
-        # num = spatial_shapes[0][0] * spatial_shapes[0][1]
-        # np.savetxt('mask.txt', np.array(src_key_padding_mask[0].cpu()))
-        # print('ori mask:', src_key_padding_mask.shape)
-        # print('mask:', src_key_padding_mask[..., None].shape)
-        # print('mask count 0: ', torch.unique(src_key_padding_mask[0], return_counts=True))
+        dr = self._tome_info["d_r"].pop(0)
         
-        if r > 0:
+        if dr > 0:
             merge, merge_ref = bipartite_soft_matching_dim0(
                 tgt2,
-                r,
+                dr,
                 self._tome_info["class_token"],
                 self._tome_info["distill_token"],
             )
@@ -185,10 +184,31 @@ class ToMeTransformerDecoderLayer(TransformerDecoderLayer): # DeformableTransfor
             # print('merge tgt:', tgt.shape)
             # print('merge query_pos:', query_pos.shape)
 
+        mr = self._tome_info["m_r"].pop(0)
+        
+        if mr > 0:
+            merge, merge_ref = bipartite_soft_matching_dim0(
+                memory,
+                mr,
+                self._tome_info["class_token"],
+                self._tome_info["distill_token"],
+            )
+            
+            if self._tome_info["trace_source"]:
+                self._tome_info["source"] = merge_source(
+                    merge, memory, self._tome_info["source"]
+                )
+
+            # print('tgt:', tgt.shape)
+            # print('query_pos:', query_pos.shape)
+            cur_size = self._tome_info["e_size"]
+            memory, self._tome_info["e_size"] = merge_wavg(merge, memory, cur_size) # 將token進行merge
+            pos, _ = merge_wavg(merge_ref, pos, cur_size, self._tome_info["e_size"], 'pos') # merge pos
+
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
         tgt = tgt + self.dropout3(tgt2)
         tgt = self.norm3(tgt)
-        return tgt, query_pos
+        return tgt, query_pos, memory, pos
 
 
 # class ToMeMSDeformAttn(MSDeformAttn):
@@ -284,6 +304,7 @@ def make_tome_class(transformer_class):
             # num_layers = self.transformer.num_encoder_layers + self.transformer.num_decoder_layers
             self._tome_info["e_r"] = parse_r(self.transformer.num_encoder_layers, self.er) # ex: 3個blocks, 則_tome_info["r"] = [r, r, r]
             self._tome_info["d_r"] = parse_r(self.transformer.num_decoder_layers, self.dr)
+            self._tome_info["m_r"] = parse_r(self.transformer.num_decoder_layers, self.mr)
             # 在class DeformableTransformer(nn.Module):加上self.blocks = num_encoder_layers + num_decoder_layers
 
             self._tome_info["e_size"] = None
@@ -312,9 +333,11 @@ def apply_patch(
     model.__class__ = ToMeTransformer
     model.er = 0
     model.dr = 0
+    model.mr = 0
     model._tome_info = {
         "e_r": model.er,
         "d_r": model.dr,
+        "m_r": model.mr,
         "e_size": None,
         "d_size": None,
         "source": None,
