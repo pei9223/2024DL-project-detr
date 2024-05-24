@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 import numpy as np
-from ToMe.merge import bipartite_soft_matching, merge_source, merge_wavg
+from ToMe.merge import bipartite_soft_matching, merge_source, merge_wavg, bipartite_soft_matching_dim0
 from ToMe.utils import parse_r
 # from models.ops.modules import MSDeformAttn
 # from models.ops.functions import MSDeformAttnFunction
@@ -78,14 +78,14 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransfor
         if r > 0:
             # Apply ToMe here 使用key找到要merge哪些token
             # print('ori src:', src.shape)
-            src2 = src2.transpose(0, 1)
-            merge, merge_ref = bipartite_soft_matching(
+            # src2 = src2.transpose(0, 1)
+            merge, merge_ref = bipartite_soft_matching_dim0(
                 src2,
                 r,
                 self._tome_info["class_token"],
                 self._tome_info["distill_token"],
             )
-            src2 = src2.transpose(0, 1)
+            # src2 = src2.transpose(0, 1)
             if self._tome_info["trace_source"]:
                 self._tome_info["source"] = merge_source(
                     merge, src, self._tome_info["source"]
@@ -95,15 +95,15 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer): # DeformableTransfor
             # print('merge merge ref:', merge, merge_ref)
             cur_size = self._tome_info["size"]
 
-            src = src.transpose(0, 1)
+            # src = src.transpose(0, 1)
             src, self._tome_info["size"] = merge_wavg(merge, src, cur_size) # 將token進行merge
             
-            src = src.transpose(0, 1)
+            # src = src.transpose(0, 1)
             # print('merge src:', src.shape)
             # print('ori pos:', pos.shape)
-            pos = pos.transpose(0, 1)
+            # pos = pos.transpose(0, 1)
             pos, _ = merge_wavg(merge_ref, pos, cur_size, self._tome_info["size"], 'pos') # merge pos
-            pos = pos.transpose(0, 1)
+            # pos = pos.transpose(0, 1)
             # print('merge pos:', pos.shape)
             # N, n_q, lvl, coor = reference_points.shape
             # reference_points = reference_points.reshape((N, n_q, -1))

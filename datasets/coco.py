@@ -27,6 +27,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         img, target = self.prepare(img, target)
         if self._transforms is not None:
             img, target = self._transforms(img, target)
+        # print('img:', img.shape)
         return img, target
 
 
@@ -53,7 +54,7 @@ class ConvertCocoPolysToMask(object):
 
     def __call__(self, image, target):
         w, h = image.size
-
+        # print('w, h:', w, h)
         image_id = target["image_id"]
         image_id = torch.tensor([image_id])
 
@@ -137,7 +138,7 @@ def make_coco_transforms(image_set):
 
     if image_set == 'val':
         return T.Compose([
-            T.RandomResize([800], max_size=1333),
+            T.RandomResize([2000], max_size=3000),
             normalize,
         ])
 
