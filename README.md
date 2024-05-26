@@ -18,6 +18,6 @@ python main.py --batch_size 1 --no_aux_loss --eval --resume https://dl.fbaipubli
 2. e_r: r in encoder
 3. d_r: r in object queries
     * detr object queries = 100
-    * return_intermediate=False (不然output stack有問題)
+    * 需要設定 return_intermediate=False (transformer.py line 293, 不然output stack有問題)
     * 初步測試效果好像不太好，但也可以實驗顯示不能merge object queries
 4. m_r: r of encoder outputs in decoder
