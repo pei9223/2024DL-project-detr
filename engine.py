@@ -84,12 +84,21 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
             data_loader.dataset.ann_folder,
             output_dir=os.path.join(output_dir, "panoptic_eval"),
         )
-
+    total_time = 0
+    repetitions = 0
     for samples, targets in metric_logger.log_every(data_loader, 10, header):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         
+        starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+        starter.record()
         outputs = model(samples)
+        ender.record()
+        torch.cuda.synchronize()
+        curr_time = starter.elapsed_time(ender)/1000
+        total_time += curr_time
+        repetitions += 1
+
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
 
@@ -148,4 +157,11 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         stats['PQ_all'] = panoptic_res["All"]
         stats['PQ_th'] = panoptic_res["Things"]
         stats['PQ_st'] = panoptic_res["Stuff"]
+
+    batch_size = 1
+    Throughput =   (repetitions * batch_size) / total_time
+    print(f"Repetitions: {repetitions}")
+    print(f"Batch size: {batch_size}")
+    print(f"Total time: {total_time}")
+    print('Final Throughput (repetitions * batch_size) / total_time:', Throughput)
     return stats, coco_evaluator
