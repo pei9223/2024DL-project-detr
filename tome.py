@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 import numpy as np
-from ToMe.merge import bipartite_soft_matching, merge_source, merge_wavg, bipartite_soft_matching_dim0
+from ToMe.merge import bipartite_soft_matching, merge_source, merge_wavg, bipartite_soft_matching_dim0, merge_source_dim0
 from ToMe.utils import parse_r
 from models.transformer import TransformerEncoderLayer, TransformerDecoderLayer, Transformer, TransformerEncoder
 
@@ -62,6 +62,8 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer):
                               key_padding_mask=src_key_padding_mask)[0]
         src = src + self.dropout1(src2)
         src = self.norm1(src)
+        print(f"block src: {src.shape}")
+        print(f"block src2: {src2.shape}")
         
         # apply tome option 1
         r = self._tome_info["e_r"].pop(0)        
@@ -72,8 +74,9 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer):
                 self._tome_info["class_token"],
                 self._tome_info["distill_token"],
             )
+
             if self._tome_info["trace_source"]:
-                self._tome_info["source"] = merge_source(
+                self._tome_info["source"] = merge_source_dim0(
                     merge, src, self._tome_info["source"]
                 )
             
@@ -240,4 +243,72 @@ def apply_patch(
             module.__class__ = ToMeTransformerDecoderLayer
             module._tome_info = model._tome_info
 
-    
+import os
+from torchvision.utils import save_image
+import datasets.transforms as T
+from ToMe.vis import make_visualization
+from PIL import Image
+from torchvision import transforms
+# def ToMe_visualization(model, coco_root, device):
+#     # 定义 transform_norm 转换
+#     transform_norm = T.Compose([
+#         T.ToTensor(),
+#         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+#     ])
+
+#     # 定义 transform_vis 转换
+#     transform_vis = T.Compose([
+#         T.RandomResize([2000], max_size=3000),
+#     ])
+
+
+#     model.eval()
+
+#     folder_path = os.path.join(coco_root, 'val2017')
+#     img_names = [f for f in os.listdir(folder_path) if f.endswith('.jpg')]
+#     for img_name in img_names:
+#         img_path = os.path.join(folder_path, img_name)
+#         img = Image.open(img_path)
+#         img_RGB = img.convert("RGB")
+
+#         img_vis, _ = transform_vis(img, None)
+#         img_vis_rgb, _ = transform_vis(img_RGB, None)
+#         img_norm, _ = transform_norm(img_vis_rgb, None)
+#         img_norm = img_norm.to(device)
+
+#         _ = model(img_norm)
+#         source = model._tome_info["source"]
+
+#         print(f"source: {source.shape}")
+
+#         print(f"{source.shape[0]} tokens at the end")
+#         img_vis = make_visualization(img_vis, source, patch_size=32, class_token=False)
+#         save_image(img_vis, os.path.join('./not_tracked_dir/imgs', f'vis_{img_name}.png'))
+
+def ToMe_visualization(model, dataloader_vis, coco_root, device):
+    # 定义 transform_norm 转换
+    transform_norm = T.Compose([
+        T.ToTensor(),
+        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+
+    # 定义 transform_vis 转换
+    transform_vis = T.Compose([
+        T.RandomResize([2000], max_size=3000),
+    ])
+
+    model.er = [100] * 3
+    model.eval()
+    for i, (sample, target) in enumerate(dataloader_vis):
+
+        img_vis = sample
+        # img_norm, _ = transform_norm(img_vis, None)
+
+        img_vis = img_vis.to(device)
+        _ = model(img_vis)
+        source = model._tome_info["source"]
+        print(f"source: {source.shape}")
+        print(f"{source.shape[0]} tokens at the end")
+        img_vis = make_visualization(img_vis, source, patch_size=32, class_token=False)
+        save_image(img_vis, os.path.join('./not_tracked_dir/imgs', f'vis_{i+1}.png'))
+

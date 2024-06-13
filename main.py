@@ -15,7 +15,7 @@ import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
 from engine import evaluate, train_one_epoch
 from models import build_model
-from tome import apply_patch
+from tome import apply_patch, ToMe_visualization
 from thop import profile
 
 def get_args_parser():
@@ -105,6 +105,7 @@ def get_args_parser():
     parser.add_argument('--encoder_r', default=0, type=int)
     parser.add_argument('--decoder_r', default=0, type=int)
     parser.add_argument('--memory_r', default=0, type=int)
+    parser.add_argument('--tome_vis', action='store_true')
 
     return parser
 
@@ -148,13 +149,16 @@ def main(args):
 
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
+    dataset_vis = build_dataset(image_set='vis', args=args)
 
     if args.distributed:
         sampler_train = DistributedSampler(dataset_train)
         sampler_val = DistributedSampler(dataset_val, shuffle=False)
+        sampler_val = DistributedSampler(dataset_vis, shuffle=False)
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        sampler_vis = torch.utils.data.SequentialSampler(dataset_vis)
 
     batch_sampler_train = torch.utils.data.BatchSampler(
         sampler_train, args.batch_size, drop_last=True)
@@ -162,6 +166,8 @@ def main(args):
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
                                    collate_fn=utils.collate_fn, num_workers=args.num_workers)
     data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
+                                 drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
+    data_loader_vis = DataLoader(dataset_val, args.batch_size, sampler=sampler_vis,
                                  drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
 
     if args.dataset_file == "coco_panoptic":
@@ -190,10 +196,15 @@ def main(args):
 
     if args.eval:
         # apply ToMe patch 
-        apply_patch(model, trace_source=False, prop_attn=True)
+        apply_patch(model, trace_source=True, prop_attn=True)
         model.er = args.encoder_r     # set r to merge encoder token
         model.dr = args.decoder_r       # set r to merge object query. If not zero, set transformer.py (293): return_intermediate_dec=False
         model.mr = args.memory_r     # set r to merge encoder token(memory) in decoder
+
+        # visualization
+        if args.tome_vis:
+            ToMe_visualization(model, data_loader_val, args.coco_path, device)
+            return
 
         test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
                                               data_loader_val, base_ds, device, args.output_dir)
