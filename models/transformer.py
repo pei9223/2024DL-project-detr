@@ -50,18 +50,21 @@ class Transformer(nn.Module):
     def forward(self, src, mask, query_embed, pos_embed):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
-        # print('transformer h, w:', h, w)
-        
+        print(f"Transformer input src: {src.shape}")
+        # print(f"flatten src: {src.flatten(2).shape}")
         src = src.flatten(2).permute(2, 0, 1)
         pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
         query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
         mask = mask.flatten(1)
-
+        # print(f"permute src: {src.shape}")
         tgt = torch.zeros_like(query_embed)
         memory, pos, src_key_padding_mask = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed) ##
+        # print(f"memory: {memory.shape}")
+        # print(f"pos: {pos.shape}")
+        # print(f"src_key_padding_mask: {src_key_padding_mask.shape}")
         hs = self.decoder(tgt, memory, memory_key_padding_mask=src_key_padding_mask,
                           pos=pos, query_pos=query_embed) ##
-        # return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
+       
         return hs.transpose(1, 2), memory.permute(1, 2, 0)
 
 
@@ -110,7 +113,7 @@ class TransformerDecoder(nn.Module):
         intermediate = []
 
         for layer in self.layers:
-            output = layer(output, memory, tgt_mask=tgt_mask,
+            output, query_pos, memory, pos = layer(output, memory, tgt_mask=tgt_mask,
                            memory_mask=memory_mask,
                            tgt_key_padding_mask=tgt_key_padding_mask,
                            memory_key_padding_mask=memory_key_padding_mask,
@@ -185,7 +188,7 @@ class TransformerEncoderLayer(nn.Module):
                 src_mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None,
                 pos: Optional[Tensor] = None):
-        # print('self.normalize_before:', self.normalize_before)
+       
         if self.normalize_before:
             return self.forward_pre(src, src_mask, src_key_padding_mask, pos)
         return self.forward_post(src, src_mask, src_key_padding_mask, pos)

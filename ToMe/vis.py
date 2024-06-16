@@ -42,15 +42,18 @@ def make_visualization(
      - A PIL image the same size as the input.
     """
 
-    img = np.array(img.convert("RGB")) / 255.0
-    source = source.detach().cpu()
-
+    img = np.array(img.convert("RGB")) / 255.0  # (h, w, c)
+    source = source.detach().cpu()  # (final sequence len, 1, 1)
     h, w, _ = img.shape
-    ph = h // patch_size
-    pw = w // patch_size
+    # Adjustment for detr
+    ph = int(np.ceil(h / patch_size)) # 63
+    pw = int(np.ceil(w / patch_size))  # 94
 
     if class_token:
         source = source[:, :, 1:]
+
+    # Adjustment for detr
+    source = source.permute(1, 0, 2)
 
     vis = source.argmax(dim=1)
     num_groups = vis.max().item() + 1
