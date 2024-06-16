@@ -62,8 +62,8 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer):
                               key_padding_mask=src_key_padding_mask)[0]
         src = src + self.dropout1(src2)
         src = self.norm1(src)
-        print(f"block src: {src.shape}")
-        print(f"block src2: {src2.shape}")
+        # print(f"block src: {src.shape}")
+        # print(f"block src2: {src2.shape}")
         
         # apply tome option 1
         r = self._tome_info["e_r"].pop(0)        
@@ -76,6 +76,7 @@ class ToMeTransformerEncoderLayer(TransformerEncoderLayer):
             )
 
             if self._tome_info["trace_source"]:
+                # update source info
                 self._tome_info["source"] = merge_source_dim0(
                     merge, src, self._tome_info["source"]
                 )
@@ -249,43 +250,9 @@ import datasets.transforms as T
 from ToMe.vis import make_visualization
 from PIL import Image
 from torchvision import transforms
-# def ToMe_visualization(model, coco_root, device):
-#     # 定义 transform_norm 转换
-#     transform_norm = T.Compose([
-#         T.ToTensor(),
-#         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-#     ])
+from pathlib import Path
 
-#     # 定义 transform_vis 转换
-#     transform_vis = T.Compose([
-#         T.RandomResize([2000], max_size=3000),
-#     ])
-
-
-#     model.eval()
-
-#     folder_path = os.path.join(coco_root, 'val2017')
-#     img_names = [f for f in os.listdir(folder_path) if f.endswith('.jpg')]
-#     for img_name in img_names:
-#         img_path = os.path.join(folder_path, img_name)
-#         img = Image.open(img_path)
-#         img_RGB = img.convert("RGB")
-
-#         img_vis, _ = transform_vis(img, None)
-#         img_vis_rgb, _ = transform_vis(img_RGB, None)
-#         img_norm, _ = transform_norm(img_vis_rgb, None)
-#         img_norm = img_norm.to(device)
-
-#         _ = model(img_norm)
-#         source = model._tome_info["source"]
-
-#         print(f"source: {source.shape}")
-
-#         print(f"{source.shape[0]} tokens at the end")
-#         img_vis = make_visualization(img_vis, source, patch_size=32, class_token=False)
-#         save_image(img_vis, os.path.join('./not_tracked_dir/imgs', f'vis_{img_name}.png'))
-
-def ToMe_visualization(model, dataloader_vis, coco_root, device):
+def ToMe_visualization(model, dataloader_vis, dataloader_val, device, output_path):
     # 定义 transform_norm 转换
     transform_norm = T.Compose([
         T.ToTensor(),
@@ -296,19 +263,33 @@ def ToMe_visualization(model, dataloader_vis, coco_root, device):
     transform_vis = T.Compose([
         T.RandomResize([2000], max_size=3000),
     ])
+    # create output folder
+    Path(os.path.join(output_path, 'origin')).mkdir(exist_ok=True, parents=True)
+    Path(os.path.join(output_path, 'vis')).mkdir(exist_ok=True, parents=True)
 
-    model.er = [100] * 3
+    final_num_tokens = []
     model.eval()
-    for i, (sample, target) in enumerate(dataloader_vis):
+    for i, ((sample, target), (sample_val, target_val)) in enumerate(zip(dataloader_vis, dataloader_val)):
+        save_image(sample.tensors, os.path.join(os.path.join(output_path, 'origin'), f'origin_{i+1}.png'))
 
-        img_vis = sample
-        # img_norm, _ = transform_norm(img_vis, None)
+        # sample.tensors: [1, 3, 1997, 3000]
+        to_pil_image = transforms.ToPILImage()
+        pil_image = to_pil_image(sample.tensors[0])
 
-        img_vis = img_vis.to(device)
-        _ = model(img_vis)
+        img_norm, _ = transform_norm(pil_image, None)
+        img_norm = img_norm.to(device)
+
+        sample_val = sample_val.to(device)
+        _ = model(sample_val)
+
         source = model._tome_info["source"]
-        print(f"source: {source.shape}")
-        print(f"{source.shape[0]} tokens at the end")
-        img_vis = make_visualization(img_vis, source, patch_size=32, class_token=False)
-        save_image(img_vis, os.path.join('./not_tracked_dir/imgs', f'vis_{i+1}.png'))
+        final_num_tokens.append(source.shape[0])
+
+        print(f"{source.shape[0]} tokens at the end") # origin in shape 1
+
+        img_vis = make_visualization(pil_image, source, patch_size=32, class_token=False)
+        img_vis.save(os.path.join(os.path.join(output_path, 'vis'), f'vis_{i+1}.png'))
+    
+    avg_final_num_token = sum(avg_final_num_token) / len(avg_final_num_token)
+    print(f"Average number of final tokens: {avg_final_num_token}")
 

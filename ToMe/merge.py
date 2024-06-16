@@ -200,8 +200,8 @@ def bipartite_soft_matching_dim0(
         
     def merge_dim0(x: torch.Tensor, mode="mean") -> torch.Tensor:
         src, dst = x[::2, :, :], x[1::2, :, :]
-        t1, n, c = src.shape
-        
+        t1, n, c = src.shape # (seq len, batch size, channel)
+
         unm = src.gather(dim=0, index=unm_idx.expand(t1 - r, n, c))
         src = src.gather(dim=0, index=src_idx.expand(r, n, c))
         dst = dst.scatter_reduce(0, dst_idx.expand(r, n, c), src, reduce=mode)
@@ -396,7 +396,8 @@ def merge_source_dim0(
     if source is None:
         t, n, _ = x.shape
         source = torch.eye(t, device=x.device)[None, ...].expand(n, t, t)
-        print(f"source in merge_source: {source.shape}")
+        # To merge in dim0
+        source = source.permute(1, 0, 2)
 
     source = merge(source, mode="amax")
     return source

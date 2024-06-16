@@ -50,7 +50,7 @@ class Transformer(nn.Module):
     def forward(self, src, mask, query_embed, pos_embed):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
-        # print(f"transformer src: {src.shape}")
+        print(f"Transformer input src: {src.shape}")
         # print(f"flatten src: {src.flatten(2).shape}")
         src = src.flatten(2).permute(2, 0, 1)
         pos_embed = pos_embed.flatten(2).permute(2, 0, 1)

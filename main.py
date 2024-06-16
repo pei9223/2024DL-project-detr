@@ -106,6 +106,7 @@ def get_args_parser():
     parser.add_argument('--decoder_r', default=0, type=int)
     parser.add_argument('--memory_r', default=0, type=int)
     parser.add_argument('--tome_vis', action='store_true')
+    parser.add_argument('--vis_folder', type=str)
 
     return parser
 
@@ -203,7 +204,8 @@ def main(args):
 
         # visualization
         if args.tome_vis:
-            ToMe_visualization(model, data_loader_val, args.coco_path, device)
+            
+            ToMe_visualization(model, data_loader_vis, data_loader_val, device, args.vis_folder)
             return
 
         test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
